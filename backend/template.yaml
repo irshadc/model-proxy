@@ -1,0 +1,225 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  GPT-6 Luna proxy. CloudFront -> API Gateway REST (API key, streaming) -> Lambda
+  (Python 3.14 + Lambda Web Adapter) -> Bedrock Responses API via global cross-Region inference.
+
+Parameters:
+  ModelId:
+    Type: String
+    Default: global.openai.gpt-6-luna
+    Description: Bedrock inference profile ID that every request is pinned to.
+  FoundationModelId:
+    Type: String
+    Default: openai.gpt-6-luna
+    Description: Foundation model behind the inference profile (used in IAM ARNs).
+  StageName:
+    Type: String
+    Default: prod
+  ThrottleRateLimit:
+    Type: Number
+    Default: 10
+    Description: Steady-state requests per second for the API key.
+  ThrottleBurstLimit:
+    Type: Number
+    Default: 20
+  DailyRequestQuota:
+    Type: Number
+    Default: 10000
+  IntegrationTimeoutMs:
+    Type: Number
+    Default: 300000
+    MinValue: 50
+    MaxValue: 900000
+    Description: API Gateway integration timeout. Streaming integrations allow up to 15 minutes.
+  LambdaWebAdapterLayerVersion:
+    Type: Number
+    Default: 30
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+
+Resources:
+  # ---------- Shared secret: only CloudFront knows it, Lambda rejects calls without it ----------
+  OriginVerifySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Header value CloudFront adds so the proxy can reject direct API Gateway calls.
+      GenerateSecretString:
+        PasswordLength: 48
+        ExcludePunctuation: true
+
+  # ---------- Compute ----------
+  ProxyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-proxy
+      RetentionInDays: !Ref LogRetentionDays
+
+  ProxyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-proxy
+      CodeUri: src/
+      Handler: run.sh
+      Runtime: python3.14
+      Architectures: [arm64]
+      MemorySize: 512
+      Timeout: 300
+      Layers:
+        - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerArm64:${LambdaWebAdapterLayerVersion}
+      LoggingConfig:
+        LogGroup: !Ref ProxyLogGroup
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+          AWS_LWA_INVOKE_MODE: response_stream
+          AWS_LWA_READINESS_CHECK_PATH: /healthz
+          PORT: "8080"
+          MODEL_ID: !Ref ModelId
+          ORIGIN_SECRET_ARN: !Ref OriginVerifySecret
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: GlobalInferenceProfileInSourceRegion
+              Effect: Allow
+              Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+              Resource: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModelId}
+              Condition:
+                StringEquals:
+                  aws:RequestedRegion: !Ref AWS::Region
+            - Sid: FoundationModelInSourceRegion
+              Effect: Allow
+              Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+              Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/${FoundationModelId}
+              Condition:
+                StringEquals:
+                  aws:RequestedRegion: !Ref AWS::Region
+                  bedrock:InferenceProfileArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModelId}
+            - Sid: FoundationModelGlobalRouting
+              Effect: Allow
+              Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+              Resource: !Sub arn:aws:bedrock:::foundation-model/${FoundationModelId}
+              Condition:
+                StringEquals:
+                  aws:RequestedRegion: unspecified
+                  bedrock:InferenceProfileArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModelId}
+            - Sid: ResponsesApiDefaultProject
+              Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:project/default
+            - Sid: ReadOriginVerifySecret
+              Effect: Allow
+              Action: [secretsmanager:GetSecretValue]
+              Resource: !Ref OriginVerifySecret
+
+  # ---------- API Gateway REST API (streaming Lambda proxy, API key required) ----------
+  LunaApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub ${AWS::StackName}-api
+      StageName: !Ref StageName
+      EndpointConfiguration:
+        Type: REGIONAL
+      DefinitionBody:
+        openapi: "3.0.1"
+        info:
+          title: !Sub ${AWS::StackName}-api
+          version: "1.0"
+        x-amazon-apigateway-api-key-source: HEADER
+        components:
+          securitySchemes:
+            api_key:
+              type: apiKey
+              name: x-api-key
+              in: header
+        paths:
+          /v1/responses:
+            post:
+              security:
+                - api_key: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2021-11-15/functions/${ProxyFunction.Arn}/response-streaming-invocations
+                responseTransferMode: STREAM
+                timeoutInMillis: !Ref IntegrationTimeoutMs
+
+  ProxyInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ProxyFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LunaApi}/*/POST/v1/responses
+
+  ProxyApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn: LunaApiStage
+    Properties:
+      Name: !Sub ${AWS::StackName}-key
+      Enabled: true
+
+  ProxyUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: LunaApiStage
+    Properties:
+      UsagePlanName: !Sub ${AWS::StackName}-plan
+      ApiStages:
+        - ApiId: !Ref LunaApi
+          Stage: !Ref StageName
+      Throttle:
+        RateLimit: !Ref ThrottleRateLimit
+        BurstLimit: !Ref ThrottleBurstLimit
+      Quota:
+        Limit: !Ref DailyRequestQuota
+        Period: DAY
+
+  ProxyUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ProxyApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ProxyUsagePlan
+
+  # ---------- CloudFront (public entry point) ----------
+  ProxyDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub ${AWS::StackName} GPT-6 Luna proxy
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200
+        Origins:
+          - Id: luna-api
+            DomainName: !Sub ${LunaApi}.execute-api.${AWS::Region}.amazonaws.com
+            OriginPath: !Sub /${StageName}
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 5
+            OriginCustomHeaders:
+              - HeaderName: X-Origin-Verify
+                HeaderValue: !Sub "{{resolve:secretsmanager:${OriginVerifySecret}:SecretString}}"
+        DefaultCacheBehavior:
+          TargetOriginId: luna-api
+          ViewerProtocolPolicy: https-only
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: false
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+
+Outputs:
+  ProxyBaseUrl:
+    Description: OpenAI-compatible base URL (pass to the OpenAI SDK / Strands as base_url).
+    Value: !Sub https://${ProxyDistribution.DomainName}/v1
+  ApiKeyId:
+    Description: API key ID. Fetch the value with scripts/get-api-key.sh.
+    Value: !Ref ProxyApiKey
+  ProxyFunctionName:
+    Value: !Ref ProxyFunction
+  ProxyLogGroupName:
+    Value: !Ref ProxyLogGroup

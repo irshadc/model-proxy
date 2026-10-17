@@ -1,0 +1,16 @@
+[project]
+name = "luna-proxy-backend"
+version = "0.1.0"
+description = "Lambda proxy from API Gateway to the Bedrock Responses API (GPT-6 Luna)"
+requires-python = ">=3.14"
+# Runtime deps: none beyond boto3, which the Lambda python3.14 runtime provides.
+
+[dependency-groups]
+dev = [
+    "boto3==1.43.114",
+    "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,9 @@
+[project]
+name = "luna-agent-sample"
+version = "0.1.0"
+description = "Strands agent calling GPT-6 Luna through the CloudFront/API Gateway proxy"
+requires-python = ">=3.14"
+dependencies = [
+    "python-dotenv==1.2.4",
+    "strands-agents[openai]==1.61.1",
+]
