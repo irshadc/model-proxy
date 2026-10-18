@@ -1,6 +1,6 @@
 # Model Proxy
 
-An API-key-protected proxy for Amazon Bedrock that exposes the OpenAI Responses API. Clients call one CloudFront URL with an API Gateway key and a full Bedrock model ID. They need no AWS credentials. Three samples show how to call it: Strands Agents, LangGraph and plain HTTP.
+An API-key-protected proxy for Amazon Bedrock that exposes the OpenAI Responses API. Clients call one CloudFront URL with an API Gateway key and a full Bedrock model ID. They need no AWS credentials. Four samples show how to call it: Strands Agents, LangGraph, plain HTTP and curl.
 
 ## What It Does
 
@@ -21,7 +21,7 @@ An API-key-protected proxy for Amazon Bedrock that exposes the OpenAI Responses 
 | Region control | Bedrock is called in the stack Region. `global.` profiles may serve from any commercial Region |
 | Keyless clients | The Lambda IAM role signs calls to Bedrock, so clients hold only the API key |
 | Infrastructure as code | One SAM template plus deploy, key and smoke-test scripts |
-| Samples | Strands Agents, LangGraph and a standard-library HTTP client, each self-contained |
+| Samples | Strands Agents, LangGraph, a standard-library HTTP client and a curl script, each self-contained |
 
 ## How It Works
 
@@ -40,7 +40,7 @@ See [backend/README.md](backend/README.md) for the component table, IAM and limi
 | Path | Type | Description |
 |------|------|-------------|
 | [backend/](backend/README.md) | API | SAM stack: CloudFront, API Gateway, Lambda proxy, tests, scripts |
-| [samples/](samples/README.md) | Clients | Strands, LangGraph and plain HTTP samples |
+| [samples/](samples/README.md) | Clients | Strands, LangGraph, plain HTTP and curl samples |
 
 ## Quick Start
 
@@ -64,6 +64,7 @@ cd ../samples/simple-api && uv run --env-file .env api_call.py
 - [samples/strands-agent/README.md](samples/strands-agent/README.md)
 - [samples/langgraph-agent/README.md](samples/langgraph-agent/README.md)
 - [samples/simple-api/README.md](samples/simple-api/README.md)
+- [samples/curl/README.md](samples/curl/README.md)
 
 ## License
 
