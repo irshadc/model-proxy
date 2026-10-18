@@ -73,3 +73,7 @@ Logs go to the CloudWatch log group `/aws/lambda/model-proxy-proxy`.
 | Request body | 10 MB | API Gateway limit |
 
 Long buffered (`stream:false`) calls with high reasoning effort can hit the 60 s CloudFront limit. Use `stream:true` for those calls.
+
+## License
+
+MIT-0. See [LICENSE](../LICENSE). Developed and maintained by Irshad Chohan.
