@@ -11,6 +11,7 @@ from proxy.server import build_handler
 
 SECRET = "origin-secret"
 MODEL = "global.openai.gpt-6-luna"
+ALLOWED = frozenset({MODEL})
 SSE_EVENTS = [b'event: response.output_text.delta\ndata: {"delta":"Hel"}\n\n',
               b'event: response.output_text.delta\ndata: {"delta":"lo"}\n\n']
 
@@ -41,7 +42,7 @@ class FakeBedrock:
 @pytest.fixture
 def proxy():
     bedrock = FakeBedrock()
-    server = ThreadingHTTPServer(("127.0.0.1", 0), build_handler(MODEL, SECRET, bedrock))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), build_handler(ALLOWED, SECRET, bedrock))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server.server_address[1], bedrock
@@ -58,14 +59,14 @@ def post(port, body, headers=None):
 
 def test_rejects_calls_without_origin_secret(proxy):
     port, bedrock = proxy
-    status, _, _ = post(port, {"input": "hi"})
+    status, _, _ = post(port, {"model": MODEL, "input": "hi"})
     assert status == 403
     assert bedrock.calls == []
 
 
 def test_buffered_mode(proxy):
     port, bedrock = proxy
-    status, ctype, body = post(port, {"input": "hi", "model": "other"}, {"X-Origin-Verify": SECRET})
+    status, ctype, body = post(port, {"input": "hi", "model": MODEL}, {"X-Origin-Verify": SECRET})
     assert (status, ctype) == (200, "application/json")
     assert json.loads(body)["output_text"] == "Hello"
     sent, is_streaming = bedrock.calls[0]
@@ -74,7 +75,7 @@ def test_buffered_mode(proxy):
 
 def test_streaming_mode_relays_sse(proxy):
     port, bedrock = proxy
-    status, ctype, body = post(port, {"input": "hi", "stream": True}, {"X-Origin-Verify": SECRET})
+    status, ctype, body = post(port, {"model": MODEL, "input": "hi", "stream": True}, {"X-Origin-Verify": SECRET})
     assert (status, ctype) == (200, "text/event-stream")
     assert body == b"".join(SSE_EVENTS)
     assert bedrock.calls[0][1] is True
@@ -82,6 +83,6 @@ def test_streaming_mode_relays_sse(proxy):
 
 def test_bad_request(proxy):
     port, _ = proxy
-    status, _, body = post(port, {"stream": True}, {"X-Origin-Verify": SECRET})
+    status, _, body = post(port, {"model": "not-allowed", "input": "hi"}, {"X-Origin-Verify": SECRET})
     assert status == 400
     assert json.loads(body)["error"]["type"] == "invalid_request_error"

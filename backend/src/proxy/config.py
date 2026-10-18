@@ -18,11 +18,19 @@ def _require(name: str) -> str:
     return value
 
 
+def parse_model_allowlist(raw: str) -> frozenset[str]:
+    """Split a comma-separated list of Bedrock model / inference profile IDs."""
+    model_ids = frozenset(item.strip() for item in raw.split(",") if item.strip())
+    if not model_ids:
+        raise RuntimeError("ALLOWED_MODEL_IDS must list at least one model ID")
+    return model_ids
+
+
 @dataclass(frozen=True)
 class Settings:
     port: int
     region: str
-    model_id: str
+    allowed_model_ids: frozenset[str]
     origin_secret_arn: str
 
     @property
@@ -34,6 +42,6 @@ def load_settings() -> Settings:
     return Settings(
         port=int(_require("PORT")),
         region=_require("AWS_REGION"),
-        model_id=_require("MODEL_ID"),
+        allowed_model_ids=parse_model_allowlist(_require("ALLOWED_MODEL_IDS")),
         origin_secret_arn=_require("ORIGIN_SECRET_ARN"),
     )

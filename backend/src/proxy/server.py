@@ -23,14 +23,14 @@ from proxy.config import (
 )
 from proxy.request_policy import InvalidRequest, build_responses_request, is_trusted_origin
 
-logger = logging.getLogger("luna-proxy")
+logger = logging.getLogger("model-proxy")
 
 
 def log_event(level: int, **fields: object) -> None:
     logger.log(level, json.dumps(fields, default=str))
 
 
-def build_handler(model_id: str, origin_secret: str, bedrock: BedrockResponsesClient):
+def build_handler(allowed_model_ids: frozenset[str], origin_secret: str, bedrock: BedrockResponsesClient):
     class ProxyHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -52,7 +52,7 @@ def build_handler(model_id: str, origin_secret: str, bedrock: BedrockResponsesCl
             if raw_body is None:
                 return
             try:
-                request = build_responses_request(raw_body, model_id)
+                request = build_responses_request(raw_body, allowed_model_ids)
             except InvalidRequest as exc:
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
                 return
@@ -144,11 +144,11 @@ def main() -> None:
     settings = load_settings()
     origin_secret = fetch_origin_secret(settings.origin_secret_arn, settings.region)
     bedrock = BedrockResponsesClient(settings.region, settings.bedrock_host)
-    handler = build_handler(settings.model_id, origin_secret, bedrock)
+    handler = build_handler(settings.allowed_model_ids, origin_secret, bedrock)
 
     # Lambda Web Adapter connects over loopback; never bind a public interface.
     server = ThreadingHTTPServer(("127.0.0.1", settings.port), handler)
-    log_event(logging.INFO, msg="proxy_started", port=settings.port, model=settings.model_id)
+    log_event(logging.INFO, msg="proxy_started", port=settings.port, models=sorted(settings.allowed_model_ids))
     server.serve_forever()
 
 

@@ -58,7 +58,7 @@ wheels = [
 ]
 
 [[package]]
-name = "luna-proxy-backend"
+name = "model-proxy-backend"
 version = "0.1.0"
 source = { virtual = "." }
 

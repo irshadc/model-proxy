@@ -1,4 +1,4 @@
-"""Strands agent that reaches GPT-6 Luna through the CloudFront -> API Gateway proxy.
+"""Strands agent that calls a Bedrock model through the CloudFront -> API Gateway proxy.
 
 Run:  uv run agent.py "What is 17% of 2,340, and what time is it in Mumbai?"
 """
@@ -21,8 +21,7 @@ ARITHMETIC_OPERATORS = {
     ast.Mult: operator.mul,
     ast.Div: operator.truediv,
 }
-# The proxy pins every request to global.openai.gpt-6-luna; this name is informational.
-MODEL_NAME = "gpt-6-luna"
+DEFAULT_MODEL_ID = "global.openai.gpt-6-luna"
 # The OpenAI SDK requires an api_key; auth is the API Gateway key in x-api-key instead.
 UNUSED_OPENAI_KEY = "not-used-by-proxy"
 
@@ -69,7 +68,7 @@ def current_time(timezone: str) -> str:
 
 def build_agent() -> Agent:
     model = OpenAIResponsesModel(
-        model_id=MODEL_NAME,
+        model_id=os.environ.get("MODEL_ID", DEFAULT_MODEL_ID),
         client_args={
             "base_url": require_env("PROXY_BASE_URL"),
             "api_key": UNUSED_OPENAI_KEY,

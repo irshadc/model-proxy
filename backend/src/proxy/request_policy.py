@@ -22,11 +22,11 @@ def is_trusted_origin(presented_secret: str | None, expected_secret: str) -> boo
     return hmac.compare_digest(presented_secret.encode(), expected_secret.encode())
 
 
-def build_responses_request(raw_body: bytes, model_id: str) -> ResponsesRequest:
-    """Parse the client body, pin the model, and read the `stream` flag.
+def build_responses_request(raw_body: bytes, allowed_model_ids: frozenset[str]) -> ResponsesRequest:
+    """Parse the client body, check `model` against the allowlist, and read `stream`.
 
-    The client-supplied `model` is replaced so one API key can only reach the
-    model this proxy was deployed for.
+    The client must name a full Bedrock model or inference profile ID
+    (e.g. global.openai.gpt-6-luna); anything not on the allowlist is rejected.
     """
     try:
         payload = json.loads(raw_body)
@@ -41,5 +41,10 @@ def build_responses_request(raw_body: bytes, model_id: str) -> ResponsesRequest:
     if not isinstance(stream_flag, bool):
         raise InvalidRequest("'stream' must be true or false")
 
-    payload["model"] = model_id
-    return ResponsesRequest(body=json.dumps(payload).encode(), is_streaming=stream_flag)
+    model_id = payload.get("model")
+    if not isinstance(model_id, str) or not model_id:
+        raise InvalidRequest("Request body must include 'model' (a Bedrock model ID)")
+    if model_id not in allowed_model_ids:
+        raise InvalidRequest(f"Model '{model_id}' is not allowed on this proxy")
+
+    return ResponsesRequest(body=raw_body, is_streaming=stream_flag)

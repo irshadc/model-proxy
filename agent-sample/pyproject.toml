@@ -1,7 +1,7 @@
 [project]
-name = "luna-agent-sample"
+name = "model-proxy-agent-sample"
 version = "0.1.0"
-description = "Strands agent calling GPT-6 Luna through the CloudFront/API Gateway proxy"
+description = "Strands agent calling a Bedrock model through the CloudFront/API Gateway proxy"
 requires-python = ">=3.14"
 dependencies = [
     "python-dotenv==1.2.4",

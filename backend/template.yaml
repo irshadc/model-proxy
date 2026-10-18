@@ -1,18 +1,18 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  GPT-6 Luna proxy. CloudFront -> API Gateway REST (API key, streaming) -> Lambda
-  (Python 3.14 + Lambda Web Adapter) -> Bedrock Responses API via global cross-Region inference.
+  Bedrock model proxy. CloudFront -> API Gateway REST (API key, streaming) -> Lambda
+  (Python 3.14 + Lambda Web Adapter) -> Bedrock Responses API. Clients pass the full
+  model / inference profile ID; the Lambda only forwards IDs listed in AllowedModelIds.
 
 Parameters:
-  ModelId:
+  AllowedModelIds:
     Type: String
-    Default: global.openai.gpt-6-luna
-    Description: Bedrock inference profile ID that every request is pinned to.
-  FoundationModelId:
-    Type: String
-    Default: openai.gpt-6-luna
-    Description: Foundation model behind the inference profile (used in IAM ARNs).
+    AllowedPattern: "^[A-Za-z0-9.:_-]+(,[A-Za-z0-9.:_-]+)*$"
+    ConstraintDescription: Comma-separated Bedrock model or inference profile IDs, no spaces.
+    Description: >
+      Required. Comma-separated model / inference profile IDs that clients may pass,
+      e.g. global.openai.gpt-6-luna,us.openai.gpt-6-luna
   StageName:
     Type: String
     Default: prod
@@ -76,34 +76,37 @@ Resources:
           AWS_LWA_INVOKE_MODE: response_stream
           AWS_LWA_READINESS_CHECK_PATH: /healthz
           PORT: "8080"
-          MODEL_ID: !Ref ModelId
+          ALLOWED_MODEL_IDS: !Ref AllowedModelIds
           ORIGIN_SECRET_ARN: !Ref OriginVerifySecret
       Policies:
+        # Model choice is enforced by ALLOWED_MODEL_IDS in the Lambda. IAM keeps every
+        # call entering Bedrock through this stack's Region (aws:RequestedRegion), and
+        # allows cross-Region routing only via inference profiles in that Region.
         - Version: "2012-10-17"
           Statement:
-            - Sid: GlobalInferenceProfileInSourceRegion
+            - Sid: InferenceProfilesInStackRegion
               Effect: Allow
               Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
-              Resource: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModelId}
+              Resource: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
               Condition:
                 StringEquals:
                   aws:RequestedRegion: !Ref AWS::Region
-            - Sid: FoundationModelInSourceRegion
+            - Sid: FoundationModelsInStackRegion
               Effect: Allow
               Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
-              Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/${FoundationModelId}
+              Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/*
               Condition:
                 StringEquals:
                   aws:RequestedRegion: !Ref AWS::Region
-                  bedrock:InferenceProfileArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModelId}
-            - Sid: FoundationModelGlobalRouting
+            - Sid: FoundationModelsViaStackRegionProfiles
               Effect: Allow
               Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
-              Resource: !Sub arn:aws:bedrock:::foundation-model/${FoundationModelId}
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/*  # geographic profile destinations
+                - arn:aws:bedrock:::foundation-model/*   # global profile routing
               Condition:
-                StringEquals:
-                  aws:RequestedRegion: unspecified
-                  bedrock:InferenceProfileArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModelId}
+                ArnLike:
+                  bedrock:InferenceProfileArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
             - Sid: ResponsesApiDefaultProject
               Effect: Allow
               Action: [bedrock:InvokeModel]
@@ -114,7 +117,7 @@ Resources:
               Resource: !Ref OriginVerifySecret
 
   # ---------- API Gateway REST API (streaming Lambda proxy, API key required) ----------
-  LunaApi:
+  ProxyApi:
     Type: AWS::Serverless::Api
     Properties:
       Name: !Sub ${AWS::StackName}-api
@@ -151,22 +154,22 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref ProxyFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LunaApi}/*/POST/v1/responses
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProxyApi}/*/POST/v1/responses
 
   ProxyApiKey:
     Type: AWS::ApiGateway::ApiKey
-    DependsOn: LunaApiStage
+    DependsOn: ProxyApiStage
     Properties:
       Name: !Sub ${AWS::StackName}-key
       Enabled: true
 
   ProxyUsagePlan:
     Type: AWS::ApiGateway::UsagePlan
-    DependsOn: LunaApiStage
+    DependsOn: ProxyApiStage
     Properties:
       UsagePlanName: !Sub ${AWS::StackName}-plan
       ApiStages:
-        - ApiId: !Ref LunaApi
+        - ApiId: !Ref ProxyApi
           Stage: !Ref StageName
       Throttle:
         RateLimit: !Ref ThrottleRateLimit
@@ -188,12 +191,12 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Sub ${AWS::StackName} GPT-6 Luna proxy
+        Comment: !Sub ${AWS::StackName} Bedrock model proxy
         HttpVersion: http2and3
         PriceClass: PriceClass_200
         Origins:
-          - Id: luna-api
-            DomainName: !Sub ${LunaApi}.execute-api.${AWS::Region}.amazonaws.com
+          - Id: model-proxy-api
+            DomainName: !Sub ${ProxyApi}.execute-api.${AWS::Region}.amazonaws.com
             OriginPath: !Sub /${StageName}
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
@@ -204,7 +207,7 @@ Resources:
               - HeaderName: X-Origin-Verify
                 HeaderValue: !Sub "{{resolve:secretsmanager:${OriginVerifySecret}:SecretString}}"
         DefaultCacheBehavior:
-          TargetOriginId: luna-api
+          TargetOriginId: model-proxy-api
           ViewerProtocolPolicy: https-only
           AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
           CachedMethods: [GET, HEAD]

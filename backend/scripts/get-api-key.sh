@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Print the proxy base URL and API key as env exports for agent-sample/.env or your shell.
-# Usage: ./scripts/get-api-key.sh [--stack-name luna-proxy] [--region ap-south-1] [--profile name]
+# Usage: ./scripts/get-api-key.sh [--stack-name model-proxy] [--region ap-south-1] [--profile name]
 set -euo pipefail
 
-STACK_NAME="luna-proxy"
+STACK_NAME="model-proxy"
 REGION="ap-south-1"
 
 while [[ $# -gt 0 ]]; do

@@ -1,7 +1,7 @@
 [project]
-name = "luna-proxy-backend"
+name = "model-proxy-backend"
 version = "0.1.0"
-description = "Lambda proxy from API Gateway to the Bedrock Responses API (GPT-6 Luna)"
+description = "Lambda proxy from API Gateway to the Bedrock Responses API (any allowlisted model)"
 requires-python = ">=3.14"
 # Runtime deps: none beyond boto3, which the Lambda python3.14 runtime provides.
 
