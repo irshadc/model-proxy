@@ -11,7 +11,7 @@ Every request needs the `x-api-key` header and a `model` that is on the stack's 
 
 ```bash
 cd model-proxy/samples/simple-api
-../../backend/scripts/get-api-key.sh > .env     # or: cp .env.example .env and fill in values
+../../backend/scripts/get-api-key.sh > .env     # or: cp ../.env.example .env and set the values
 uv run --env-file .env api_call.py
 uv run --env-file .env api_call.py "Explain API Gateway usage plans in one sentence."
 ```

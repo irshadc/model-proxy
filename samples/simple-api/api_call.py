@@ -23,7 +23,7 @@ SSE_DONE_SENTINEL = "[DONE]"
 def require_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
-        raise SystemExit(f"Missing required environment variable: {name} (see .env.example)")
+        raise SystemExit(f"Missing required environment variable: {name} (copy ../.env.example to .env)")
     return value
 
 

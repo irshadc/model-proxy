@@ -8,7 +8,7 @@ The graph is an explicit `StateGraph` tool loop. A `model` node either answers o
 
 ```bash
 cd model-proxy/samples/langgraph-agent
-../../backend/scripts/get-api-key.sh > .env     # or: cp .env.example .env and fill in values
+../../backend/scripts/get-api-key.sh > .env     # or: cp ../.env.example .env and set the values
 uv sync
 uv run agent.py                               # default prompt
 uv run agent.py "What is 12.5% of 8,400?"
