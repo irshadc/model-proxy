@@ -7,8 +7,8 @@ The agent has two local tools, `calculator` and `current_time`, which exercise t
 ## Run
 
 ```bash
-cd model-proxy/agent-sample
-../backend/scripts/get-api-key.sh > .env      # or: cp .env.example .env and fill in values
+cd model-proxy/samples/strands-agent
+../../backend/scripts/get-api-key.sh > .env     # or: cp .env.example .env and fill in values
 uv sync
 uv run agent.py                               # default prompt
 uv run agent.py "What is 12.5% of 8,400?"

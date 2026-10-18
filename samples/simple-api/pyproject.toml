@@ -1,0 +1,6 @@
+[project]
+name = "model-proxy-simple-api"
+version = "0.1.0"
+description = "Plain HTTP calls to the model proxy (standard library only)"
+requires-python = ">=3.14"
+dependencies = []

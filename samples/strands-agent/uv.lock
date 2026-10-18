@@ -462,7 +462,7 @@ wheels = [
 ]
 
 [[package]]
-name = "model-proxy-agent-sample"
+name = "model-proxy-strands-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

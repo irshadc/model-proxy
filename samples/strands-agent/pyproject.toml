@@ -1,5 +1,5 @@
 [project]
-name = "model-proxy-agent-sample"
+name = "model-proxy-strands-agent"
 version = "0.1.0"
 description = "Strands agent calling a Bedrock model through the CloudFront/API Gateway proxy"
 requires-python = ">=3.14"

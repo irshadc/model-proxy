@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print the proxy base URL and API key as env exports for agent-sample/.env or your shell.
+# Print the proxy base URL and API key as env exports for samples/<sample>/.env or your shell.
 # Usage: ./scripts/get-api-key.sh [--stack-name model-proxy] [--region ap-south-1] [--profile name]
 set -euo pipefail
 

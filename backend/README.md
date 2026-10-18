@@ -41,7 +41,7 @@ client ──HTTPS──▶ CloudFront ──(+X-Origin-Verify)──▶ API Gat
 ```bash
 cd model-proxy/backend
 ./scripts/deploy.sh --allowed-models global.openai.gpt-6-luna,us.openai.gpt-6-luna --region ap-south-1
-./scripts/get-api-key.sh > ../agent-sample/.env    # writes PROXY_BASE_URL and PROXY_API_KEY
+for s in strands-agent langgraph-agent simple-api; do ./scripts/get-api-key.sh > ../samples/$s/.env; done
 ```
 
 `--allowed-models` is required and has no default. To change the list, run the deploy again with a new value. After the first deploy, CloudFront takes about 5 minutes to go live.
@@ -50,7 +50,7 @@ cd model-proxy/backend
 
 ```bash
 uv run --python 3.14 pytest -q                      # local unit tests, no AWS calls
-set -a; source ../agent-sample/.env; set +a
+set -a; source ../samples/simple-api/.env; set +a
 ./scripts/smoke-test.sh                             # buffered, streaming, disallowed model (400), no key (403)
 ```
 
