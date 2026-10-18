@@ -1,6 +1,6 @@
 # Model Proxy — Samples
 
-Four clients for the model proxy, each self-contained with its own `pyproject.toml`, `uv.lock`, `README.md` and `.env`. They all call `POST /v1/responses` on the CloudFront URL with an API Gateway key. They need no AWS credentials.
+Four clients for the model proxy. Each is self-contained with its own `README.md` and `.env`, and the Python samples also have their own `pyproject.toml` and `uv.lock`. They all call `POST /v1/responses` on the CloudFront URL with an API Gateway key. They need no AWS credentials.
 
 | Sample | Approach | Key libraries | Stream mode |
 |--------|----------|---------------|-------------|
